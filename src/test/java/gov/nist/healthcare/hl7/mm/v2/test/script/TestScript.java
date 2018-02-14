@@ -3,11 +3,7 @@ package gov.nist.healthcare.hl7.mm.v2.test.script;
 import java.io.IOException;
 import java.util.List;
 
-import org.immregistries.dqa.message_modifier.script.CommandExecutionException;
-import org.immregistries.dqa.message_modifier.script.Issue;
-import org.immregistries.dqa.message_modifier.script.ModificationDetails;
-import org.immregistries.dqa.message_modifier.transform.ReferenceParsed;
-import org.immregistries.dqa.message_modifier.transform.SetCommand;
+
 
 import gov.nist.healthcare.hl7.mm.v2.domain.CallCommand;
 import gov.nist.healthcare.hl7.mm.v2.domain.Component;

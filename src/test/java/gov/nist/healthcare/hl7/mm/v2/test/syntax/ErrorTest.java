@@ -2,7 +2,6 @@ package gov.nist.healthcare.hl7.mm.v2.test.syntax;
 
 import java.util.List;
 
-import org.immregistries.dqa.message_modifier.script.Issue;
 import org.junit.Test;
 
 import gov.nist.healthcare.hl7.mm.v2.domain.AssignmentCommand;

@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.util.Map;
 
-import org.apache.commons.lang3.StringUtils;
 
 public class SetCommand  {
   private ReferenceParsed targetReference = null;
@@ -30,13 +29,13 @@ public class SetCommand  {
     while ((lineResult = inResult.readLine()) != null) {
       lineResult = lineResult.trim();
       if (lineResult.length() > 0) {
-    	  if(t.fieldPos > countFieldsinLine(lineResult)) {
-
-    		  Issue issue = new Issue(IssueType.Warning,"The field  '" +t.toString()+"' does not exist in the message"+"\n"+"\n");
-//  			System.out.println(issue.toString());
-
-    		  throw new CommandExecutionException(issue);
-  		} 
+//    	  if(t.fieldPos > countFieldsinLine(lineResult)) {
+//
+//    		  Issue issue = new Issue(IssueType.Warning,"The field  '" +t.toString()+"' does not exist in the message"+"\n"+"\n");
+////  			System.out.println(issue.toString());
+//
+//    		  throw new CommandExecutionException(issue);
+//  		} 
         if (t.boundSegment != null && !foundBoundEnd) {
           boolean skip = false;
           if (lineResult.startsWith(t.boundSegment + "|")) {
@@ -224,10 +223,10 @@ public class SetCommand  {
     return count;
   }
 
-  public static int countFieldsinLine(String lineResult) {
-	  int i = StringUtils.countMatches(lineResult, "|");
-return i;
-  }
+//  public static int countFieldsinLine(String lineResult) {
+//	  int i = StringUtils.countMatches(lineResult, "|");
+//return i;
+//  }
   
   public static boolean checkSegmentExistence(String resultText, ReferenceParsed t) throws IOException {
 	  String lineResult = "";
