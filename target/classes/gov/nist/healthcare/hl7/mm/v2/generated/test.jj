@@ -1,0 +1,275 @@
+options {
+USER_CHAR_STREAM = false;
+STATIC = false;
+}
+PARSER_BEGIN(Parser)
+package gov.nist.healthcare.hl7.mm.v2.generated;
+import gov.nist.healthcare.hl7.mm.v2.domain.*;
+import gov.nist.healthcare.hl7.mm.v2.nathancode.CommandExecutionException;
+import gov.nist.healthcare.hl7.mm.v2.nathancode.Issue;
+import gov.nist.healthcare.hl7.mm.v2.nathancode.IssueType;import java.util.List;
+import java.util.ArrayList;
+import java.io.StringReader;
+
+public class Parser {
+
+    public static MMScript parse(String script) throws ParseException, TokenMgrError {
+        Parser p = new Parser(new StringReader(script));
+        try {
+            	return p.SCRIPT();
+        	} catch (TokenMgrError e) {
+            	throw e;
+        	} catch (ParseException e) {
+            	throw e;
+        	}
+    }
+
+    public static String extract(String str) {
+    		return str.substring(1, str.length()-1);
+    }
+
+    public static MMScript parseLineByLine(String script) throws ParseException, TokenMgrError {
+    	String[] commands = script.split(";");
+    	MMScript mmScript = new MMScript(new ArrayList<Command>());
+    	
+    	for(String command : commands){
+    		Parser p = new Parser(new StringReader(command));
+    		 try {
+                 mmScript.getCommands().add(p.COMMAND());
+             } catch (TokenMgrError e) {
+                 mmScript.getSyntax().add(new Issue(IssueType.Error, e.getMessage()));
+             } catch (ParseException e) {
+            	 mmScript.getSyntax().add(new Issue(IssueType.Error, e.getMessage()));
+             }
+    	}
+    	
+        return mmScript;
+    }
+
+   
+}
+
+PARSER_END(Parser)
+
+SKIP :
+{
+" "
+| "\t"
+| "\r"
+| "\n"
+}
+
+TOKEN :
+{
+  < IF: "if" >
+|
+  < FOR: "for" >
+|
+  < THEN: "then" >
+|
+  < USE: "use" >
+|
+  < CALL: "call" >
+|
+  < ID: ["A"-"Z","_","0"-"9"]["A"-"Z","_","0"-"9"]["A"-"Z","_","0"-"9"] >
+|
+  < STRING: "\""( ["a"-"z","A"-"Z","_","0"-"9"," "] )* "\"">
+|
+  < NUM: ( ["0"-"9"] )+  >
+|
+  < PRESET_VALUE: "["["a"-"z","A"-"Z","_"] ( ["a"-"z","A"-"Z","_","0"-"9"] )* "]">
+|
+  < UNQUOTED_STRING : ["a"-"z","A"-"Z","_"] ( ["a"-"z","A"-"Z","_","0"-"9"] )* >
+|
+  < CONTEXT_SELECTOR : "::" >
+|
+  < EQUAL: "==" >
+|
+  < DIFFERENT: "!=" >
+|
+  < GREATER_THAN: ">" >
+|
+  < LESSER_THAN: "<" >
+|
+  < LEFT_PARENTHESIS: "(" >
+|
+  < RIGHT_PARENTHESIS: ")" >
+}
+
+MMScript SCRIPT() : {
+	List<Command> commands = new ArrayList<Command>();
+	Command cmd;
+}
+{
+  (cmd = COMMAND() ";" { commands.add(cmd); } )* <EOF>
+  { return new MMScript(commands); }
+}
+
+Command COMMAND() :
+{
+  UseCommand use;
+  Reference selector = null;
+  ConditionalCommand condition;
+  AssignmentCommand assignment;
+  CallCommand call;
+}
+{
+  (
+   ( use = USE() { return use; }) |
+   ( (selector = SELECTOR())?
+   	(
+   	  condition = IF(selector) {return condition;}|
+   	  assignment = ASSIGNMENT(selector) {return assignment;}|
+   	  call = CALL(selector) {return call;}
+   	)
+   )
+  )
+}
+
+Reference SELECTOR() : {
+	Reference r;
+}
+{
+  (<FOR> "$" r = REFERENCE() { return r; })
+}
+
+UseCommand USE() : {
+	Token key;
+	Token value;	
+}
+{
+  <USE> key = <UNQUOTED_STRING> <CONTEXT_SELECTOR> value = <UNQUOTED_STRING>
+  { return new UseCommand(key.image, value.image); }
+}
+
+ConditionalCommand IF(Reference selector) : {
+	Reference ref;
+	Token value;
+	Comparator cmp;
+	CallCommand call;
+}
+{
+	<IF> <LEFT_PARENTHESIS> ref = REFERENCE() cmp = COMPARATOR() value = < STRING > <RIGHT_PARENTHESIS>
+	<THEN>
+	call = CALL(selector)
+	{ return new ConditionalCommand(selector, ref, cmp, Parser.extract(value.image), call); }
+}
+
+Comparator COMPARATOR() :
+{}
+{
+    ( <EQUAL>        { return Comparator.EQ; }
+    | <DIFFERENT>    { return Comparator.NE; }
+    | <GREATER_THAN> { return Comparator.GT; }
+    | <LESSER_THAN>  { return Comparator.LT; }
+    )
+}
+
+CallCommand CALL(Reference selector) :
+{
+	Token name;
+	List<Arg> args = new ArrayList<Arg>(); 
+}
+{
+  	<CALL> name = <UNQUOTED_STRING> <LEFT_PARENTHESIS> args = ARGS() <RIGHT_PARENTHESIS>
+  	{ return new CallCommand(selector, name.image, args); }
+}
+
+List<Arg> ARGS() : {
+	List<Arg> args = new ArrayList<Arg>();
+	Token arg_name;
+	Token arg_value;
+}
+{
+	( arg_name = <STRING> "=>" arg_value = <STRING> (",")? { args.add(new Arg(Parser.extract(arg_name.image), Parser.extract(arg_value.image))); })*
+	{ return args; }
+	  
+}
+
+AssignmentCommand ASSIGNMENT(Reference selector) :
+{
+  Reference ref;
+  Value val;
+}
+{
+  ref = REFERENCE() "=" val = STATEMENT() { return new AssignmentCommand(selector, ref, val); }
+}
+
+Value STATEMENT() : {
+	Token value;
+	Token preset;
+	Reference ref;
+}
+{
+	(
+	   value  = < STRING > { return new ConstantValue(Parser.extract(value.image)); }
+	 | preset = <PRESET_VALUE> { return new PresetValue(preset.image); }
+	 | "$" ref = REFERENCE() { return new ReferenceValue(ref); }	)
+}
+
+Reference REFERENCE() : {
+	Segment seg = null;
+	Reference ref = null;
+}
+{
+  seg = SEGMENT() ref = X(seg) { return ref; }
+}
+
+Reference X(Segment seg) : {
+  HL7Path path;
+  Field field = null;
+  Component comp = null;
+  SubComponent sub = null;
+}
+{
+	(< CONTEXT_SELECTOR > path = PATH() {return new Reference(path,seg); }) |
+	(("-" field = FIELD() ("." comp = COMPONENT() ("." sub = SUBCOMPONENT())?)?)? { return new Reference(new HL7Path(seg, field, comp, sub), null); })	  
+}
+
+
+HL7Path PATH() : {
+	Segment seg;
+	Field field = null;
+	Component comp = null;
+	SubComponent sub = null;
+}
+{
+  seg = SEGMENT() ("-" field = FIELD() ("." comp = COMPONENT() ("." sub = SUBCOMPONENT())?)?)? { return new HL7Path(seg, field, comp, sub); }
+}
+
+Segment SEGMENT() : {
+	Token id;
+	Token instance = null;
+}
+{
+	id = < ID > ("["  ( instance = < NUM > | instance = "*") "]")? { return new Segment((String) id.image, instance == null ? "1" : (String) instance.image); }
+}
+
+Field FIELD() : {
+	Token id;
+	Token instance = null;
+}
+{
+	id = < NUM > ("["  ( instance = < NUM > | instance ="*") "]")? { return new Field((String) id.image, instance == null ? "1" : (String) instance.image); }
+}
+
+Component COMPONENT() : {
+	Token id;
+}
+{
+	id = < NUM > { return new Component((String) id.image); }
+}
+
+SubComponent SUBCOMPONENT() : {
+	Token id;
+}
+{
+	id = < NUM > { return new SubComponent((String) id.image); }
+}
+
+
+
+
+
+
+

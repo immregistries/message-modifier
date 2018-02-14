@@ -1,0 +1,445 @@
+options {
+USER_CHAR_STREAM = false;
+STATIC = false;
+}
+PARSER_BEGIN(Parser)
+
+public class Parser {
+
+    public Program parse(Log log) {
+        try {
+            return PROGRAM();
+        } catch (TokenMgrError e) {
+            log.exception(e);
+            return null;
+        } catch (ParseException e) {
+            log.exception(e);
+            return null;
+        }
+    }
+}
+
+PARSER_END(Parser)
+
+SKIP :
+{
+" "
+| "\t"
+| "\r"
+| "\n"
+}
+
+TOKEN :
+{
+  < IF: "if" >
+|
+  < FOR: "for" >
+|
+  < THEN: "then" >
+|
+  < USE: "use" >
+|
+  < CALL: "call" >
+|
+  < ID: ["A"-"Z","_","0"-"9"]["A"-"Z","_","0"-"9"]["A"-"Z","_","0"-"9"] >
+|
+  < STRING: "\""( ["a"-"z","A"-"Z","_","0"-"9"," "] )* "\"">
+|
+  < NUM: (( ["0"-"9"] )+ | ("*")) >
+|
+  < PRESET_VALUE: "["["a"-"z","A"-"Z","_"] ( ["a"-"z","A"-"Z","_","0"-"9"] )* "]">
+|
+  < UNQUOTED_STRING : ["a"-"z","A"-"Z","_"] ( ["a"-"z","A"-"Z","_","0"-"9"] )* >
+|
+  < CONTEXT_SELECTOR : "::" >
+|
+  < EQUAL: "==" >
+|
+  < DIFFERENT: "!=" >
+|
+  < GREATER_THAN: ">" >
+|
+  < LESSER_THAN: "<" >
+|
+  < LEFT_PARENTHESIS: "(" >
+|
+  < RIGHT_PARENTHESIS: ")" >
+}
+
+Script SCRIPT() :
+{
+  List<Command> commands = new ArrayList<Command>(); 
+}
+{
+  ( command = COMMAND() ";" { commands.add(command); })*
+  <EOF>
+}
+
+Command COMMAND() :
+{
+  String type;
+  String s = "";
+}
+{
+  (
+  (
+      (
+      string = forSelector()
+      {
+          s += string;
+      }
+      )?
+      (
+      string = ifCommand()
+      {
+          s += string;
+      }
+      |
+      	(   
+      	  string = assignment()
+          {
+              s += string;  
+          }
+          | string = functionCall()
+            {
+              s += string;
+            }
+      	)
+      )
+  )
+  | s = useCommand()
+  )
+  {
+    return s;
+  }
+}
+
+String useCommand() #USE_COMMAND :
+{
+    Token token;
+  Token token2;
+  String s;
+}
+{
+  <USE>
+  token = <UNQUOTED_STRING>
+  <CONTEXT_SELECTOR>
+  token2 = <UNQUOTED_STRING>
+      {
+      	jjtThis.value = token.image+"_"+token2.image;
+        s = "use " + token.image + " :: " + token2.image;
+        return s;
+      }
+}
+
+String assignment() #ASSIGNMENT :
+{
+    String ref;
+    String sta;
+    String s;
+}
+{
+    ref = reference()
+    "="
+    sta=statement()
+    {
+        s = ref + "=" + sta;
+        return s;
+    }
+}
+
+String ifCommand() #IF:
+{
+    String s, comp, func, ref;
+    Token token, token2;
+}
+{
+    <IF>
+    <LEFT_PARENTHESIS>
+    (
+        (
+        	ref = reference()
+        	{
+            	s = "if" + "(" + ref + ")";
+        	}
+        	(
+        		comp = comparison() token = <STRING>
+        		{
+        			s = "if (" + ref + " " + comp + " " + token.image + ")";
+        			jjtThis.value = token.image;
+        		}
+        	)?
+        )
+        | token = <STRING> comp = comparison() token2 = <STRING>
+          {
+            s = "if" + "(" + token.image + comp + token.image + ")";
+            jjtThis.value = token.image + "_" + token2.image;
+          }
+    )
+    <RIGHT_PARENTHESIS>
+    <THEN>
+    func = functionCall()
+    {
+        s += "then" + func;
+        return s;
+    }
+}
+
+String comparison() #COMP:
+{
+    Token token;
+}
+{
+    (
+    token = <EQUAL>
+    | token = <DIFFERENT>
+    | token = <GREATER_THAN>
+    | token = <LESSER_THAN>
+    )
+    {
+    	jjtThis.value = token.image;
+        return token.image;
+    }
+}
+
+String forSelector() #FOR:
+{
+    String ref;
+}
+{
+    <FOR>
+    ref = referencePointer()
+    {
+        return ref;
+    }
+}
+
+String referencePointer() #REF_POINTER:
+{
+    String s;
+}
+{
+    "$"s = reference()
+    {
+        return "$"+s;
+    }
+}
+
+String reference() #REFERENCE:
+{
+  String s, ref, id;
+}
+{
+  id = refId()
+  {
+      s = id;
+  }
+  (
+  ref = refContext()
+    {
+        s += ref;
+    }
+  )?
+  {
+        return s;
+  }
+}
+
+String refContext() #REF_CONTEXT:
+{
+    String id, s;
+}
+{
+    (
+        <CONTEXT_SELECTOR>
+        id = refId()
+        {
+            s = " :: " + id;
+            return s;
+        }
+    )
+}
+
+String refId() #REF_ID:
+{
+String id, field, sub, s;
+}
+{
+    id = segId()
+  {
+      s = id;
+  }
+  (
+      "-"
+      field = fieldNum()
+      {
+          s += "-" + field;
+      }
+      (
+          "."
+          sub = subNum()
+          {
+              s+= "." + sub;
+          }
+      )?
+  )?
+  {
+      return s;
+  }
+}
+
+String functionCall() #FUNCTION:
+{
+  Token name;
+  String s;
+}
+{
+  <CALL>
+  name = <UNQUOTED_STRING>
+  <LEFT_PARENTHESIS>
+  s=arguments()
+  <RIGHT_PARENTHESIS>
+    {
+      jjtThis.value = name.image;
+      return name.image+"("+s+")";
+    }
+}
+
+String arguments() #ARGS:
+{
+    Token arg_name;
+  Token arg_value;
+  String s="";
+}
+{
+  (
+  arg_name=<STRING> "=>" arg_value = <STRING>
+  {
+      s+= arg_name.image + "=>" + arg_value.image;
+  }
+        (
+        ","
+            {
+                s += ",";
+            }
+        )?
+  )*
+  {
+    jjtThis.value = s;
+    return s;
+  }
+}
+
+String statement() #STATEMENT:
+{
+  Token token;
+  String s;
+}
+{
+  token = <STRING>
+    {
+      jjtThis.value = token.image;
+      return token.image;
+    }
+  |
+    s=referencePointer()
+    {
+    	return s;
+    }
+  |
+  token=<PRESET_VALUE>
+    {
+      jjtThis.value = token.image;
+      return token.image;
+    }
+}
+
+String segId() #SEG_ID:
+{
+  Token id;
+  String s="";
+}
+{
+  id = <ID>
+  {
+    jjtThis.value = id.image;
+  }
+  (
+        s = repetitionSelector()
+    )?
+  {
+      s = id.image + s;
+        return s;
+    }
+}
+
+String fieldNum() #FIELD_NUM:
+{
+  Token num;
+  String s, rep;
+}
+{
+  num=<NUM>
+    {
+        s = (String) num.image;
+        jjtThis.value = num.image;
+    }
+    (
+           rep = repetitionSelector()
+           {
+              s += rep;
+           }
+    )?
+    {
+        return s;
+    }
+}
+
+String subNum() #SUB_NUM:
+{
+  Token num;
+  String s, rep;
+}
+{
+  num=<NUM>
+  {
+        s = (String) num.image;
+        jjtThis.value = num.image;
+    }
+  (
+      rep = repetitionSelector()
+      {
+          s += rep;
+      }
+  )?
+  {
+      return s;
+    }
+}
+
+String repetitionSelector() #REPETION_SELECTOR:
+{
+    Token num;
+    String s;
+}
+{
+        "["
+        num = <NUM>
+        "]"
+    {
+        s = "[" + num.image + "]";
+        jjtThis.value = num.image;
+        return s;
+    }
+}
+
+String comments() #COMMENTS:
+{
+    String s="";
+}
+{
+    {
+        s = "\\" + s;
+        return s;
+    }
+}
